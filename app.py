@@ -1,5 +1,6 @@
 import ipaddress
 import re
+import unicodedata
 from urllib.parse import unquote, urljoin, urlsplit
 
 import httpx
@@ -59,6 +60,17 @@ def normalize_path(raw_path):
     """
     if not isinstance(raw_path, str):
         return None
+
+    if "\x00" in raw_path or "%00" in raw_path.lower():
+        return None
+
+    # Normalize Unicode look-alikes (fullwidth slash/dot, etc.) to their
+    # canonical ASCII-compatible form, so a benign path using a confusable
+    # character still resolves to the real file, while a traversal token
+    # disguised the same way still gets caught by the exact ".." check
+    # below (NFKC is a no-op on plain ASCII, so existing behavior for
+    # ordinary paths is unaffected).
+    raw_path = unicodedata.normalize("NFKC", raw_path)
 
     # Reveal any encoded path separators (%2f, %2F) as real '/' so hidden
     # segments can't smuggle traversal past a naive split-by-'/', and so a
